@@ -1,5 +1,5 @@
 module github.com/jullss/banners-rotation
 
-go 1.25
+go 1.24
 
 require gopkg.in/yaml.v3 v3.0.1
