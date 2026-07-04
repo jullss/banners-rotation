@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS stats;
+DROP TABLE IF EXISTS slot_banners;
+DROP TABLE IF EXISTS social_groups;
+DROP TABLE IF EXISTS slots;
+DROP TABLE IF EXISTS banners;
