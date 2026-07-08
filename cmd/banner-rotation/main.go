@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/jullss/banners-rotation/internal/app"
 )
 
