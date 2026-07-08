@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"github.com/jullss/banners-rotation/internal/bandit"
 	"github.com/jullss/banners-rotation/internal/domain"
 )
