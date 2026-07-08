@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/jullss/banners-rotation/internal/api/rest"
 	"github.com/jullss/banners-rotation/internal/bandit"
 	"github.com/jullss/banners-rotation/internal/broker/kafka"
@@ -14,13 +16,12 @@ import (
 	"github.com/jullss/banners-rotation/internal/storage/postgres"
 )
 
-func Run(ctx context.Context) error {
-	cfg, err := config.New()
+cfg, err := config.New()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	store, err := postgres.New(cfg.DB.DSN, bandit.UCB1{})
+	store, err := postgres.New(cfg.DB.DSN)
 	if err != nil {
 		return fmt.Errorf("storage: %w", err)
 	}
@@ -29,7 +30,7 @@ func Run(ctx context.Context) error {
 	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topic)
 	defer producer.Close()
 
-	svc := service.New(store, producer)
+	svc := service.New(store, bandit.UCB1{}, producer)
 
 	mux := http.NewServeMux()
 	rest.NewHandler(svc).Register(mux)
