@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/jullss/banners-rotation/internal/api/rest"
 	"github.com/jullss/banners-rotation/internal/broker/kafka"
 	"github.com/jullss/banners-rotation/internal/config"
