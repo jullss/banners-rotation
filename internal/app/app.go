@@ -16,6 +16,7 @@ import (
 	"github.com/jullss/banners-rotation/internal/storage/postgres"
 )
 
+func Run(ctx context.Context) error {
 cfg, err := config.New()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
