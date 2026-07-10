@@ -17,7 +17,7 @@ import (
 )
 
 func Run(ctx context.Context) error {
-cfg, err := config.New()
+  cfg, err := config.New()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
@@ -37,7 +37,7 @@ cfg, err := config.New()
 	rest.NewHandler(svc).Register(mux)
 
 	srv := &http.Server{
-		Addr:    cfg.HTTP.Addr,
+		Addr: cfg.HTTP.Addr,
 		Handler: mux,
 	}
 
