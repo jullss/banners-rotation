@@ -1,8 +1,14 @@
 version: "2"
+
 linters:
   enable:
     - misspell
     - revive
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
   exclusions:
     generated: lax
     presets:
@@ -14,6 +20,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+
 formatters:
   enable:
     - gofmt
