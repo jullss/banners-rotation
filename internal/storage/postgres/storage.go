@@ -11,10 +11,11 @@ import (
 )
 
 type Storage struct {
-	db *sql.DB
+	db      *sql.DB
+	chooser bandit.Chooser
 }
 
-func New(dsn string) (*Storage, error) {
+func New(dsn string, chooser bandit.Chooser) (*Storage, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -22,11 +23,15 @@ func New(dsn string) (*Storage, error) {
 	if err := db.PingContext(context.Background()); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
-	return &Storage{db: db}, nil
+	return &Storage{db: db, chooser: chooser}, nil
 }
 
 func (s *Storage) Close() error {
 	return s.db.Close()
+}
+
+func (s *Storage) DB() *sql.DB {
+	return s.db
 }
 
 func (s *Storage) AddBannerToSlot(ctx context.Context, slotID, bannerID int64) error {
@@ -107,7 +112,7 @@ func (s *Storage) ChooseBanner(ctx context.Context, slotID, groupID int64) (*dom
 		return nil, errors.New("no banners in slot")
 	}
 
-	chosenID := bandit.Choose(stats)
+	chosenID := s.chooser.Choose(stats)
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO stats (slot_id, banner_id, group_id, shows, clicks)
