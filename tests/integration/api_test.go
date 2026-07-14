@@ -59,12 +59,12 @@ func (s *APISuite) SetupSuite() {
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	s.Require().NoError(err)
 
-	store, err := postgres.New(dsn, bandit.UCB1{})
+	store, err := postgres.New(dsn)
 	s.Require().NoError(err)
 	s.store = store
 	s.db = store.DB()
 
-	svc := service.New(store, noopPublisher{})
+	svc := service.New(store, bandit.UCB1{}, noopPublisher{})
 	mux := http.NewServeMux()
 	rest.NewHandler(svc).Register(mux)
 	s.server = httptest.NewServer(mux)
