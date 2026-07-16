@@ -6,7 +6,11 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/jullss/banners-rotation/internal/api/rest"
+	"github.com/jullss/banners-rotation/internal/broker/kafka"
 	"github.com/jullss/banners-rotation/internal/config"
+	"github.com/jullss/banners-rotation/internal/service"
+	"github.com/jullss/banners-rotation/internal/storage/postgres"
 )
 
 func Run(ctx context.Context) error {
@@ -15,8 +19,23 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
+	store, err := postgres.New(cfg.DB.DSN)
+	if err != nil {
+		return fmt.Errorf("storage: %w", err)
+	}
+	defer store.Close()
+
+	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topic)
+	defer producer.Close()
+
+	svc := service.New(store, producer)
+
+	mux := http.NewServeMux()
+	rest.NewHandler(svc).Register(mux)
+
 	srv := &http.Server{
-		Addr: cfg.HTTP.Addr,
+		Addr:    cfg.HTTP.Addr,
+		Handler: mux,
 	}
 
 	go func() {
