@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/jullss/banners-rotation/internal/api/rest"
+	"github.com/jullss/banners-rotation/internal/bandit"
 	"github.com/jullss/banners-rotation/internal/broker/kafka"
 	"github.com/jullss/banners-rotation/internal/config"
 	"github.com/jullss/banners-rotation/internal/service"
@@ -19,7 +20,7 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	store, err := postgres.New(cfg.DB.DSN)
+	store, err := postgres.New(cfg.DB.DSN, bandit.UCB1{})
 	if err != nil {
 		return fmt.Errorf("storage: %w", err)
 	}

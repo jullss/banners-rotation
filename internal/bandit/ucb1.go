@@ -6,6 +6,16 @@ import (
 	"github.com/jullss/banners-rotation/internal/domain"
 )
 
+type Chooser interface {
+	Choose(stats []domain.Stat) int64
+}
+
+type UCB1 struct{}
+
+func (UCB1) Choose(stats []domain.Stat) int64 {
+	return Choose(stats)
+}
+
 func score(clicks, shows, totalShows int64) float64 {
 	if shows == 0 {
 		return math.Inf(1)
