@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/jullss/banners-rotation/internal/domain"
@@ -79,7 +78,7 @@ func (s *Storage) GetBannersBySlot(ctx context.Context, slotID int64) ([]domain.
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
 	if len(banners) == 0 {
-		return nil, errors.New("no banners in slot")
+		return nil, domain.ErrNoBannersInSlot
 	}
 	return banners, nil
 }
@@ -116,7 +115,7 @@ func (s *Storage) GetStats(ctx context.Context, slotID, groupID int64) ([]domain
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
 	if len(stats) == 0 {
-		return nil, errors.New("no banners in slot")
+		return nil, domain.ErrNoBannersInSlot
 	}
 	return stats, nil
 }

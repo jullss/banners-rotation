@@ -17,6 +17,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/jullss/banners-rotation/internal/domain"
 	"github.com/jullss/banners-rotation/internal/storage/postgres"
 )
 
@@ -87,8 +88,7 @@ func (s *StorageSuite) TestAddAndRemoveBannerFromSlot() {
 
 	groupID := s.insertGroup(db, "group1")
 	_, err = s.store.GetStats(ctx, slotID, groupID)
-	s.Require().Error(err)
-	s.Require().Contains(err.Error(), "no banners in slot")
+	s.Require().ErrorIs(err, domain.ErrNoBannersInSlot)
 }
 
 func (s *StorageSuite) TestRecordClickAndShow() {
@@ -122,8 +122,7 @@ func (s *StorageSuite) TestGetStatsEmptySlot() {
 	groupID := s.insertGroup(db, "group1")
 
 	_, err := s.store.GetStats(ctx, slotID, groupID)
-	s.Require().Error(err)
-	s.Require().Contains(err.Error(), "no banners in slot")
+	s.Require().ErrorIs(err, domain.ErrNoBannersInSlot)
 }
 
 func (s *StorageSuite) TestGetStatsReturnsAllBanners() {

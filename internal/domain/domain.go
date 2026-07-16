@@ -1,5 +1,9 @@
 package domain
 
+import "errors"
+
+var ErrNoBannersInSlot = errors.New("no banners in slot")
+
 type Banner struct {
 	ID          int64
 	Description string
