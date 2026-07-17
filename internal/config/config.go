@@ -31,7 +31,7 @@ func New() (*Config, error) {
 		path = v
 	}
 
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G703 -- CONFIG_PATH is controlled by the service operator.
 	if err != nil {
 		return nil, err
 	}

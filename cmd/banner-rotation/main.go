@@ -13,10 +13,14 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatalf("application error: %v", err)
+	}
+}
+
+func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := app.Run(ctx); err != nil {
-		log.Fatalf("application error: %v", err)
-	}
+	return app.Run(ctx)
 }

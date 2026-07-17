@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jullss/banners-rotation/internal/api/rest"
 	"github.com/jullss/banners-rotation/internal/bandit"
@@ -35,13 +36,16 @@ func Run(ctx context.Context) error {
 	rest.NewHandler(svc).Register(mux)
 
 	srv := &http.Server{
-		Addr:    cfg.HTTP.Addr,
-		Handler: mux,
+		Addr:              cfg.HTTP.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		<-ctx.Done()
-		if err := srv.Shutdown(context.Background()); err != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("http shutdown: %v", err)
 		}
 	}()

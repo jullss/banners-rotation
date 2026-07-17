@@ -18,7 +18,12 @@ func TestChooseBannerReturnsNotFoundForEmptySlot(t *testing.T) {
 	mux := http.NewServeMux()
 	NewHandler(svc).Register(mux)
 
-	request := httptest.NewRequest(http.MethodGet, "/slots/1/choose?group_id=2", nil)
+	request := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/slots/1/choose?group_id=2",
+		nil,
+	)
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 
