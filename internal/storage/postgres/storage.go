@@ -3,19 +3,16 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
-	"github.com/jullss/banners-rotation/internal/bandit"
 	"github.com/jullss/banners-rotation/internal/domain"
 )
 
 type Storage struct {
-	db      *sql.DB
-	chooser bandit.Chooser
+	db *sql.DB
 }
 
-func New(dsn string, chooser bandit.Chooser) (*Storage, error) {
+func New(dsn string) (*Storage, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -23,7 +20,7 @@ func New(dsn string, chooser bandit.Chooser) (*Storage, error) {
 	if err := db.PingContext(context.Background()); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
-	return &Storage{db: db, chooser: chooser}, nil
+	return &Storage{db: db}, nil
 }
 
 func (s *Storage) Close() error {
@@ -56,6 +53,87 @@ func (s *Storage) RemoveBannerFromSlot(ctx context.Context, slotID, bannerID int
 	return nil
 }
 
+func (s *Storage) GetBannersBySlot(ctx context.Context, slotID int64) ([]domain.Banner, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT b.id, b.description
+		FROM slot_banners sb
+		JOIN banners b ON b.id = sb.banner_id
+		WHERE sb.slot_id = $1`,
+		slotID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query banners by slot: %w", err)
+	}
+	defer rows.Close()
+
+	var banners []domain.Banner
+	for rows.Next() {
+		var b domain.Banner
+		if err := rows.Scan(&b.ID, &b.Description); err != nil {
+			return nil, fmt.Errorf("scan banner: %w", err)
+		}
+		banners = append(banners, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	if len(banners) == 0 {
+		return nil, domain.ErrNoBannersInSlot
+	}
+	return banners, nil
+}
+
+func (s *Storage) GetStats(ctx context.Context, slotID, groupID int64) ([]domain.Stat, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sb.banner_id,
+		       COALESCE(st.shows, 0)  AS shows,
+		       COALESCE(st.clicks, 0) AS clicks
+		FROM slot_banners sb
+		LEFT JOIN stats st
+		       ON st.slot_id   = sb.slot_id
+		      AND st.banner_id = sb.banner_id
+		      AND st.group_id  = $2
+		WHERE sb.slot_id = $1`,
+		slotID, groupID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []domain.Stat
+	for rows.Next() {
+		var st domain.Stat
+		if err := rows.Scan(&st.BannerID, &st.Shows, &st.Clicks); err != nil {
+			return nil, fmt.Errorf("scan stat: %w", err)
+		}
+		st.SlotID = slotID
+		st.GroupID = groupID
+		stats = append(stats, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	if len(stats) == 0 {
+		return nil, domain.ErrNoBannersInSlot
+	}
+	return stats, nil
+}
+
+func (s *Storage) RecordShow(ctx context.Context, slotID, bannerID, groupID int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO stats (slot_id, banner_id, group_id, shows, clicks)
+		VALUES ($1, $2, $3, 1, 0)
+		ON CONFLICT (slot_id, banner_id, group_id)
+		DO UPDATE SET shows = stats.shows + 1`,
+		slotID, bannerID, groupID,
+	)
+	if err != nil {
+		return fmt.Errorf("record show: %w", err)
+	}
+	return nil
+}
+
 func (s *Storage) RecordClick(ctx context.Context, slotID, bannerID, groupID int64) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO stats (slot_id, banner_id, group_id, clicks, shows)
@@ -68,62 +146,4 @@ func (s *Storage) RecordClick(ctx context.Context, slotID, bannerID, groupID int
 		return fmt.Errorf("record click: %w", err)
 	}
 	return nil
-}
-
-func (s *Storage) ChooseBanner(ctx context.Context, slotID, groupID int64) (*domain.Banner, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT b.id, b.description,
-		       COALESCE(s.shows, 0)  AS shows,
-		       COALESCE(s.clicks, 0) AS clicks
-		FROM slot_banners sb
-		JOIN banners b ON b.id = sb.banner_id
-		LEFT JOIN stats s
-		       ON s.slot_id   = sb.slot_id
-		      AND s.banner_id = sb.banner_id
-		      AND s.group_id  = $2
-		WHERE sb.slot_id = $1`,
-		slotID, groupID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query banners: %w", err)
-	}
-	defer rows.Close()
-
-	var stats []domain.Stat
-	banners := make(map[int64]*domain.Banner)
-
-	for rows.Next() {
-		var b domain.Banner
-		var st domain.Stat
-		if err := rows.Scan(&b.ID, &b.Description, &st.Shows, &st.Clicks); err != nil {
-			return nil, fmt.Errorf("scan banner: %w", err)
-		}
-		st.BannerID = b.ID
-		st.SlotID = slotID
-		st.GroupID = groupID
-		stats = append(stats, st)
-		banners[b.ID] = &domain.Banner{ID: b.ID, Description: b.Description}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows error: %w", err)
-	}
-
-	if len(stats) == 0 {
-		return nil, errors.New("no banners in slot")
-	}
-
-	chosenID := s.chooser.Choose(stats)
-
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO stats (slot_id, banner_id, group_id, shows, clicks)
-		VALUES ($1, $2, $3, 1, 0)
-		ON CONFLICT (slot_id, banner_id, group_id)
-		DO UPDATE SET shows = stats.shows + 1`,
-		slotID, chosenID, groupID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("record show: %w", err)
-	}
-
-	return banners[chosenID], nil
 }

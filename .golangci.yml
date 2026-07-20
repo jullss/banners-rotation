@@ -2,13 +2,25 @@ version: "2"
 
 linters:
   enable:
+    - bodyclose
+    - errorlint
+    - funlen
+    - gocritic
+    - gocyclo
+    - gosec
     - misspell
+    - noctx
     - revive
+    - sqlclosecheck
     - errcheck
     - govet
     - ineffassign
     - staticcheck
     - unused
+  settings:
+    funlen:
+      lines: 150
+      statements: 80
   exclusions:
     generated: lax
     presets:

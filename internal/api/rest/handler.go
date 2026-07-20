@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/jullss/banners-rotation/internal/domain"
 	"github.com/jullss/banners-rotation/internal/service"
 )
 
@@ -63,7 +64,7 @@ func (h *Handler) chooseBanner(w http.ResponseWriter, r *http.Request) {
 	}
 	banner, err := h.svc.ChooseBanner(r.Context(), slotID, groupID)
 	if err != nil {
-		if errors.Is(err, errNoContent) {
+		if errors.Is(err, domain.ErrNoBannersInSlot) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -91,8 +92,6 @@ func (h *Handler) recordClick(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-var errNoContent = errors.New("no banners in slot")
 
 func slotAndBanner(r *http.Request) (int64, int64, error) {
 	slotID, err := pathInt(r, "slot_id")

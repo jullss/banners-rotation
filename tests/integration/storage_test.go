@@ -13,11 +13,10 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/testcontainers/testcontainers-go"
 
-	"github.com/jullss/banners-rotation/internal/bandit"
 	"github.com/jullss/banners-rotation/internal/domain"
 	"github.com/jullss/banners-rotation/internal/storage/postgres"
 )
@@ -49,7 +48,7 @@ func (s *StorageSuite) SetupSuite() {
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	s.Require().NoError(err)
 
-	store, err := postgres.New(dsn, bandit.UCB1{})
+	store, err := postgres.New(dsn)
 	s.Require().NoError(err)
 	s.store = store
 }
@@ -88,11 +87,11 @@ func (s *StorageSuite) TestAddAndRemoveBannerFromSlot() {
 	s.Require().NoError(err)
 
 	groupID := s.insertGroup(db, "group1")
-	_, err = s.store.ChooseBanner(ctx, slotID, groupID)
-	s.Require().Error(err)
+	_, err = s.store.GetStats(ctx, slotID, groupID)
+	s.Require().ErrorIs(err, domain.ErrNoBannersInSlot)
 }
 
-func (s *StorageSuite) TestRecordClick() {
+func (s *StorageSuite) TestRecordClickAndShow() {
 	ctx := context.Background()
 	db := s.store.DB()
 
@@ -102,14 +101,11 @@ func (s *StorageSuite) TestRecordClick() {
 
 	s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, bannerID))
 
-	_, err := s.store.ChooseBanner(ctx, slotID, groupID)
-	s.Require().NoError(err)
-
-	err = s.store.RecordClick(ctx, slotID, bannerID, groupID)
-	s.Require().NoError(err)
+	s.Require().NoError(s.store.RecordShow(ctx, slotID, bannerID, groupID))
+	s.Require().NoError(s.store.RecordClick(ctx, slotID, bannerID, groupID))
 
 	var shows, clicks int64
-	err = db.QueryRowContext(ctx,
+	err := db.QueryRowContext(ctx,
 		`SELECT shows, clicks FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
 		slotID, bannerID, groupID,
 	).Scan(&shows, &clicks)
@@ -118,19 +114,18 @@ func (s *StorageSuite) TestRecordClick() {
 	s.Require().Equal(int64(1), clicks)
 }
 
-func (s *StorageSuite) TestChooseBannerEmptySlot() {
+func (s *StorageSuite) TestGetStatsEmptySlot() {
 	ctx := context.Background()
 	db := s.store.DB()
 
 	slotID := s.insertSlot(db, "empty_slot")
 	groupID := s.insertGroup(db, "group1")
 
-	_, err := s.store.ChooseBanner(ctx, slotID, groupID)
-	s.Require().Error(err)
-	s.Require().Contains(err.Error(), "no banners in slot")
+	_, err := s.store.GetStats(ctx, slotID, groupID)
+	s.Require().ErrorIs(err, domain.ErrNoBannersInSlot)
 }
 
-func (s *StorageSuite) TestAllBannersShownAtLeastOnce() {
+func (s *StorageSuite) TestGetStatsReturnsAllBanners() {
 	ctx := context.Background()
 	db := s.store.DB()
 
@@ -144,104 +139,40 @@ func (s *StorageSuite) TestAllBannersShownAtLeastOnce() {
 		s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, id))
 	}
 
-	for range 50 {
-		_, err := s.store.ChooseBanner(ctx, slotID, groupID)
-		s.Require().NoError(err)
-	}
+	stats, err := s.store.GetStats(ctx, slotID, groupID)
+	s.Require().NoError(err)
+	s.Require().Len(stats, 5)
 
-	for _, bannerID := range bannerIDs {
-		var shows int64
-		err := db.QueryRowContext(ctx,
-			`SELECT COALESCE(shows, 0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-			slotID, bannerID, groupID,
-		).Scan(&shows)
-		s.Require().NoError(err)
-		s.Require().Greater(shows, int64(0), "banner %d was never shown", bannerID)
+	seen := make(map[int64]bool)
+	for _, st := range stats {
+		seen[st.BannerID] = true
+		s.Require().Equal(int64(0), st.Shows)
+		s.Require().Equal(int64(0), st.Clicks)
+	}
+	for _, id := range bannerIDs {
+		s.Require().True(seen[id], "banner %d missing from stats", id)
 	}
 }
 
-func (s *StorageSuite) TestPopularBannerShownMore() {
+func (s *StorageSuite) TestGetStatsAfterShowsAndClicks() {
 	ctx := context.Background()
 	db := s.store.DB()
 
 	slotID := s.insertSlot(db, "slot1")
 	groupID := s.insertGroup(db, "group1")
+	bannerID := s.insertBanner(db, "banner1")
 
-	banner1ID := s.insertBanner(db, "banner1")
-	banner2ID := s.insertBanner(db, "banner2")
-	banner3ID := s.insertBanner(db, "banner3")
+	s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, bannerID))
+	s.Require().NoError(s.store.RecordShow(ctx, slotID, bannerID, groupID))
+	s.Require().NoError(s.store.RecordShow(ctx, slotID, bannerID, groupID))
+	s.Require().NoError(s.store.RecordClick(ctx, slotID, bannerID, groupID))
 
-	s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, banner1ID))
-	s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, banner2ID))
-	s.Require().NoError(s.store.AddBannerToSlot(ctx, slotID, banner3ID))
-
-	for range 300 {
-		banner, err := s.store.ChooseBanner(ctx, slotID, groupID)
-		s.Require().NoError(err)
-		if banner.ID == banner2ID {
-			s.Require().NoError(s.store.RecordClick(ctx, slotID, banner2ID, groupID))
-		}
-	}
-
-	var shows1, shows2, shows3 int64
-	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(shows,0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-		slotID, banner1ID, groupID,
-	).Scan(&shows1)
-	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(shows,0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-		slotID, banner2ID, groupID,
-	).Scan(&shows2)
-	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(shows,0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-		slotID, banner3ID, groupID,
-	).Scan(&shows3)
-
-	s.Require().Greater(shows2, shows1, "popular banner2 should have more shows than banner1")
-	s.Require().Greater(shows2, shows3, "popular banner2 should have more shows than banner3")
-}
-
-type fixedChooser struct{ id int64 }
-
-func (f fixedChooser) Choose(_ []domain.Stat) int64 { return f.id }
-
-func (s *StorageSuite) TestChooseBannerWithFixedChooser() {
-	ctx := context.Background()
-	db := s.store.DB()
-
-	slotID := s.insertSlot(db, "slot1")
-	groupID := s.insertGroup(db, "group1")
-	banner1ID := s.insertBanner(db, "banner1")
-	banner2ID := s.insertBanner(db, "banner2")
-
-	dsn, err := s.container.ConnectionString(ctx, "sslmode=disable")
+	stats, err := s.store.GetStats(ctx, slotID, groupID)
 	s.Require().NoError(err)
-
-	fixedStore, err := postgres.New(dsn, fixedChooser{id: banner1ID})
-	s.Require().NoError(err)
-	defer fixedStore.Close()
-
-	s.Require().NoError(fixedStore.AddBannerToSlot(ctx, slotID, banner1ID))
-	s.Require().NoError(fixedStore.AddBannerToSlot(ctx, slotID, banner2ID))
-
-	for range 5 {
-		chosen, err := fixedStore.ChooseBanner(ctx, slotID, groupID)
-		s.Require().NoError(err)
-		s.Require().Equal(banner1ID, chosen.ID)
-	}
-
-	var shows1, shows2 int64
-	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(shows,0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-		slotID, banner1ID, groupID,
-	).Scan(&shows1)
-	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(shows,0) FROM stats WHERE slot_id=$1 AND banner_id=$2 AND group_id=$3`,
-		slotID, banner2ID, groupID,
-	).Scan(&shows2)
-
-	s.Require().Equal(int64(5), shows1)
-	s.Require().Equal(int64(0), shows2)
+	s.Require().Len(stats, 1)
+	s.Require().Equal(int64(2), stats[0].Shows)
+	s.Require().Equal(int64(1), stats[0].Clicks)
+	s.Require().Equal(bannerID, stats[0].BannerID)
 }
 
 func (s *StorageSuite) insertSlot(db *sql.DB, desc string) int64 {
